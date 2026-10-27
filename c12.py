@@ -9,8 +9,6 @@ from docx import Document
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
 
 st.set_page_config(page_title="Hệ Thống Quản Lý & Tác Nghiệp Thu Nộp Thông Minh", layout="wide")
 
@@ -28,7 +26,7 @@ if 'crm_logs' not in st.session_state:
 # 1. KHU VỰC NẠP DỮ LIỆU (Hỗ trợ đa kỳ để so sánh)
 st.sidebar.header("📁 1. Nạp Dữ Liệu Hệ Thống")
 uploaded_file = st.sidebar.file_uploader("Tải lên file Excel tháng hiện tại (.xls, .xlsx)", type=["xls", "xlsx"])
-uploaded_file_prev = st.sidebar.file_uploader("Tải lên file Excel tháng trước (Tùy chọn - để so sánh biến động)", type=["xls", "xlsx"])
+uploaded_file_prev = st.sidebar.file_uploader("Tải lên file Excel tháng trước (Tùy chọn - để so sánh)", type=["xls", "xlsx"])
 
 if uploaded_file is not None:
     try:
@@ -46,11 +44,23 @@ if uploaded_file is not None:
             df_prev = pd.read_excel(uploaded_file_prev, sheet_name=target_sheet_prev)
             df_prev.columns = df_prev.columns.astype(str).str.strip()
 
-        # Menu điều hướng 7 tính năng
+        # Gán nhãn rủi ro thông minh cho toàn bộ dữ liệu
+        def ai_risk_scoring(row):
+            debt = row.get('tongThieu', 0)
+            if pd.isna(debt) or debt <= 0:
+                return "🟢 An toàn"
+            elif debt < 50000000:
+                return "🟡 Cảnh báo nhắc nhở"
+            else:
+                return "🔴 Nguy cơ nợ xấu cao"
+        
+        df_master['Muc_Do_Rui_Ro'] = df_master.apply(ai_risk_scoring, axis=1)
+
+        # Menu điều hướng các tính năng
         menu = st.sidebar.selectbox(
             "⚙️ Chọn Chức Nặng Tác Nghiệp:", 
             [
-                "📊 1. Dashboard & Dự Báo Rủi Ro AI", 
+                "📊 1. Dashboard & Cảnh Báo Rủi Ro (Drill-down)", 
                 "🤖 2. Trợ Lý AI Tra Cứu Ngôn Ngữ Tự Nhiên", 
                 "👤 3. Quản Lý Chuyên Quản & CRM Tác Nghiệp", 
                 "📧 4. Gửi Email Tự Động Qua Gmail API/SMTP", 
@@ -61,10 +71,10 @@ if uploaded_file is not None:
         )
         
         # -------------------------------------------------------------
-        # TÍNH NĂNG 1: DASHBOARD & DỰ BÁO RỦI RO AI
+        # TÍNH NĂNG 1: DASHBOARD & CẢNH BÁO RỦI RO (TÍCH HỢP DRILL-DOWN TAB)
         # -------------------------------------------------------------
-        if menu == "📊 1. Dashboard & Dự Báo Rủi Ro AI":
-            st.subheader("📊 Tổng Quan & Chấm Điểm Dự Báo Rủi Ro Tự Động")
+        if menu == "📊 1. Dashboard & Cảnh Báo Rủi Ro (Drill-down)":
+            st.subheader("📊 Tổng Quan & Phân Tích Chi Tiết Theo Nhóm Rủi Ro")
             
             total_units = len(df_master)
             total_labor = df_master['sld'].sum() if 'sld' in df_master else 0
@@ -79,26 +89,68 @@ if uploaded_file is not None:
             
             st.markdown("---")
             
-            # Gán nhãn rủi ro thông minh
-            def ai_risk_scoring(row):
-                debt = row.get('tongThieu', 0)
-                labor = row.get('sld', 0)
-                if pd.isna(debt) or debt <= 0:
-                    return "🟢 An toàn"
-                elif debt < 50000000:
-                    return "🟡 Cảnh báo nhắc nhở"
-                else:
-                    return "🔴 Nguy cơ nợ xấu cao"
-            
-            df_master['Muc_Do_Rui_Ro'] = df_master.apply(ai_risk_scoring, axis=1)
-            risk_counts = df_master['Muc_Do_Rui_Ro'].value_counts()
-            
+            # Phân tách dữ liệu theo 3 nhóm rủi ro
+            df_high = df_master[df_master['Muc_Do_Rui_Ro'] == "🔴 Nguy cơ nợ xấu cao"]
+            df_warn = df_master[df_master['Muc_Do_Rui_Ro'] == "🟡 Cảnh báo nhắc nhở"]
+            df_safe = df_master[df_master['Muc_Do_Rui_Ro'] == "🟢 An toàn"]
+
+            # Hiển thị thẻ Card thống kê số lượng & tổng tiền nợ từng nhóm
             rc1, rc2, rc3 = st.columns(3)
-            rc1.metric("🔴 Nguy cơ nợ xấu cao", f"{risk_counts.get('🔴 Nguy cơ nợ xấu cao', 0):,}")
-            rc2.metric("🟡 Cảnh báo nhắc nhở", f"{risk_counts.get('🟡 Cảnh báo nhắc nhở', 0):,}")
-            rc3.metric("🟢 An toàn", f"{risk_counts.get('🟢 An toàn', 0):,}")
+            rc1.metric("🔴 Nguy cơ nợ xấu cao", f"{len(df_high):,} đơn vị", f"Nợ: {df_high['tongThieu'].sum():,.0f} đ")
+            rc2.metric("🟡 Cảnh báo nhắc nhở", f"{len(df_warn):,} đơn vị", f"Nợ: {df_warn['tongThieu'].sum():,.0f} đ")
+            rc3.metric("🟢 An toàn", f"{len(df_safe):,} đơn vị", f"Nợ: {df_safe['tongThieu'].sum():,.0f} đ")
             
             st.markdown("---")
+            st.markdown("### 📂 Danh Sách Chi Tiết Các Đơn Vị Theo Nhóm Cảnh Báo (Bấm chọn các Tab bên dưới để xem)")
+            
+            # Tạo các Tab trực quan cho từng nhóm
+            tab_high, tab_warn, tab_safe = st.tabs([
+                f"🔴 Nguy cơ nợ xấu cao ({len(df_high)})", 
+                f"🟡 Cảnh báo nhắc nhở ({len(df_warn)})", 
+                f"🟢 An toàn ({len(df_safe)})"
+            ])
+            
+            cols_show = [c for c in ['madvi', 'tendvi', 'makhoi', 'sld', 'pst', 'tongThieu', 'diachi'] if c in df_master.columns]
+
+            with tab_high:
+                st.markdown("##### 🚨 Danh sách các đơn vị thuộc nhóm **Nguy cơ nợ xấu cao** (Cần đôn đốc xử lý gấp)")
+                if len(df_high) > 0:
+                    st.dataframe(df_high[cols_show], use_container_width=True)
+                    
+                    # Nút tải riêng danh sách nhóm này
+                    out_h = io.BytesIO()
+                    with pd.ExcelWriter(out_h, engine='openpyxl') as writer:
+                        df_high.to_excel(writer, sheet_name='Nguy_co_cao', index=False)
+                    st.download_button("📥 Tải danh sách Nguy cơ cao (Excel)", out_h.getvalue(), "Danh_sach_nguy_co_cao.xlsx", key="dl_h")
+                else:
+                    st.info("Không có đơn vị nào trong nhóm này.")
+
+            with tab_warn:
+                st.markdown("##### ⚠️ Danh sách các đơn vị thuộc nhóm **Cảnh báo nhắc nhở**")
+                if len(df_warn) > 0:
+                    st.dataframe(df_warn[cols_show], use_container_width=True)
+                    
+                    out_w = io.BytesIO()
+                    with pd.ExcelWriter(out_w, engine='openpyxl') as writer:
+                        df_warn.to_excel(writer, sheet_name='Canh_bao', index=False)
+                    st.download_button("📥 Tải danh sách Cảnh báo (Excel)", out_w.getvalue(), "Danh_sach_canh_bao.xlsx", key="dl_w")
+                else:
+                    st.info("Không có đơn vị nào trong nhóm này.")
+
+            with tab_safe:
+                st.markdown("##### ✅ Danh sách các đơn vị thuộc nhóm **An toàn**")
+                if len(df_safe) > 0:
+                    st.dataframe(df_safe[cols_show], use_container_width=True)
+                    
+                    out_s = io.BytesIO()
+                    with pd.ExcelWriter(out_s, engine='openpyxl') as writer:
+                        df_safe.to_excel(writer, sheet_name='An_toan', index=False)
+                    st.download_button("📥 Tải danh sách An toàn (Excel)", out_s.getvalue(), "Danh_sach_an_toan.xlsx", key="dl_s")
+                else:
+                    st.info("Không có đơn vị nào trong nhóm này.")
+
+            st.markdown("---")
+            # Biểu đồ trực quan phụ trợ
             col_a, col_b = st.columns(2)
             with col_a:
                 st.markdown("#### 🔴 Top 10 Đơn Vị Nợ Cao Nhất")
@@ -110,6 +162,7 @@ if uploaded_file is not None:
                 st.pyplot(fig)
             with col_b:
                 st.markdown("#### 🔵 Tỷ Trọng Phân Bổ Mức Độ Rủi Ro")
+                risk_counts = df_master['Muc_Do_Rui_Ro'].value_counts()
                 fig2, ax2 = plt.subplots(figsize=(7, 7))
                 ax2.pie(risk_counts.values, labels=risk_counts.index, autopct='%1.1f%%', colors=['#2ecc71', '#f1c40f', '#e74c3c'], startangle=140)
                 st.pyplot(fig2)
@@ -184,7 +237,7 @@ if uploaded_file is not None:
                     st.dataframe(st.session_state['crm_logs'], use_container_width=True)
 
         # -------------------------------------------------------------
-        # TÍNH NĂNG 4: GỬI EMAIL TỰ ĐỘNG QUA GIMAI API/SMTP
+        # TÍNH NĂNG 4: GỬI EMAIL TỰ ĐỘNG QUA GMAIL API/SMTP
         # -------------------------------------------------------------
         elif menu == "📧 4. Gửi Email Tự Động Qua Gmail API/SMTP":
             st.subheader("📧 Hệ Thống Tự Động Gửi Email Nhắc Nợ Hàng Loạt Qua Gmail")
@@ -210,16 +263,12 @@ if uploaded_file is not None:
                         st.error("Vui lòng điền đầy đủ Email và Mật khẩu ứng dụng!")
                     else:
                         try:
-                            # Lấy email người liên hệ hoặc dùng email mẫu
                             selected_madvi = target_unit_email.split(" - ")[0]
                             row_u = df_master[df_master['madvi'].astype(str) == selected_madvi].iloc[0]
-                            
-                            # Tìm cột email trong file nếu có, nếu không cho phép nhập
-                            recipient_email = row_u.get('dsnv', 'recipient@example.com') # Hoặc lấy từ cột email nếu có
+                            recipient_email = row_u.get('dsnv', 'recipient@example.com')
                             if "@" not in str(recipient_email):
-                                recipient_email = "recipient@example.com" # Fallback
+                                recipient_email = "recipient@example.com"
                                 
-                            # Thiết lập kết nối SMTP Gmail
                             msg = MIMEMultipart()
                             msg['From'] = sender_email
                             msg['To'] = recipient_email
@@ -244,8 +293,6 @@ if uploaded_file is not None:
             
             if df_prev is not None:
                 st.success("Đã nhận diện dữ liệu tháng trước! Đang tiến hành khớp nối so sánh...")
-                
-                # Merge dữ liệu theo madvi
                 merged = pd.merge(df_master, df_prev, on='madvi', suffixes=('_nay', '_truoc'))
                 if 'tongThieu_nay' in merged.columns and 'tongThieu_truoc' in merged.columns:
                     merged['Chenh_Lech_No'] = merged['tongThieu_nay'] - merged['tongThieu_truoc']
