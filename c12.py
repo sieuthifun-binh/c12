@@ -217,4 +217,183 @@ if uploaded_file is not None:
                     st.warning(f"Không hiểu câu lệnh. Vui lòng thử lại theo cú pháp mẫu. (Lỗi: {ex})")
 
         # -------------------------------------------------------------
-        # T
+        # TÍNH NĂNG 3: QUẢN LÝ CHUYÊN QUẢN & CRM TÁC NGHIỆP
+        # -------------------------------------------------------------
+        elif menu == "👤 3. Quản Lý Chuyên Quản & CRM Tác Nghiệp":
+            st.subheader("👤 Nhật Ký CRM & Theo Dõi Tác Nghiệp Chuyên Quản")
+            
+            quan_col = 'dsnv' if 'dsnv' in df_master.columns else ('ma_quan' if 'ma_quan' in df_master.columns else None)
+            
+            if quan_col:
+                selected_quan = st.selectbox("👉 Chọn Cán bộ Chuyên quản:", df_master[quan_col].dropna().astype(str).unique())
+                df_quan = df_master[df_master[quan_col].astype(str) == selected_quan]
+                
+                st.markdown(f"#### Danh sách đơn vị do **{selected_quan}** phụ trách ({len(df_quan)} đơn vị)")
+                st.dataframe(df_quan[['madvi', 'tendvi', 'sld', '_tien_unc', 'tongThieu', 'tyleno']], use_container_width=True)
+                
+                st.markdown("---")
+                st.markdown("### 📝 Sổ Tay Ghi Nhận Lịch Sử Tác Nghiệp (CRM Log)")
+                with st.form("crm_form"):
+                    c_madvi = st.selectbox("Chọn mã đơn vị làm việc:", df_quan['madvi'].astype(str).unique())
+                    c_action = st.selectbox("Hình thức tác nghiệp:", ["Gọi điện nhắc nợ", "Gửi công văn", "Gặp trực tiếp doanh nghiệp", "Hứa hẹn lịch nộp"])
+                    c_note = st.text_area("Nội dung trao đổi / Ghi chú chi tiết:")
+                    c_staff = st.text_input("Tên cán bộ thực hiện:", value=selected_quan)
+                    
+                    submitted_crm = st.form_submit_button("💾 Lưu Nhật Ký Tác Nghiệp")
+                    if submitted_crm:
+                        unit_name = df_quan[df_quan['madvi'].astype(str) == c_madvi]['tendvi'].values[0]
+                        new_log = pd.DataFrame([{
+                            'Thoi_Gian': datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            'Ma_Dvi': c_madvi,
+                            'Ten_Dvi': unit_name,
+                            'Hanh_Dong': c_action,
+                            'Noi_Dung': c_note,
+                            'Can_Bo': c_staff
+                        }])
+                        st.session_state['crm_logs'] = pd.concat([st.session_state['crm_logs'], new_log], ignore_index=True)
+                        st.success("Đã lưu nhật ký CRM thành công!")
+                
+                if len(st.session_state['crm_logs']) > 0:
+                    st.markdown("#### 📋 Lịch sử tác nghiệp đã lưu trong hệ thống:")
+                    st.dataframe(st.session_state['crm_logs'], use_container_width=True)
+
+        # -------------------------------------------------------------
+        # TÍNH NĂNG 4: GỬI EMAIL TỰ ĐỘNG QUA GMAIL API/SMTP
+        # -------------------------------------------------------------
+        elif menu == "📧 4. Gửi Email Tự Động Qua Gmail API/SMTP":
+            st.subheader("📧 Hệ Thống Tự Động Gửi Email Nhắc Nợ Hàng Loạt Qua Gmail")
+            st.markdown("---")
+            
+            st.warning("⚠️ **Lưu ý cấu hình Gmail:** Sử dụng **Mật khẩu ứng dụng (App Password)** trong tài khoản Google của bạn.")
+            
+            with st.form("gmail_form"):
+                col_g1, col_g2 = st.columns(2)
+                with col_g1:
+                    sender_email = st.text_input("Email người gửi:", placeholder="your_email@gmail.com")
+                    sender_password = st.text_input("Mật khẩu ứng dụng Gmail (16 ký tự):", type="password")
+                with col_g2:
+                    email_subject = st.text_input("Tiêu đề Email:", value="THÔNG BÁO: Đôn đốc nộp tiền BHXH, BHYT, BHTN")
+                    target_unit_email = st.selectbox("Chọn đơn vị nhận email:", df_master['madvi'].astype(str) + " - " + df_master['tendvi'].astype(str))
+                
+                email_body = st.text_area("Nội dung Email nhắc nợ:", value="Kính gửi Quý đơn vị,\n\nQua hệ thống theo dõi thu nộp, đơn vị hiện đang có số tháng nợ vượt mức cho phép. Đề nghị đơn vị khẩn trương thanh toán để đảm bảo quyền lợi người lao động.\n\nTrân trọng!")
+                
+                send_btn = st.form_submit_button("🚀 Gửi Email Tự Động Ngay")
+                
+                if send_btn:
+                    if not sender_email or not sender_password:
+                        st.error("Vui lòng điền đầy đủ thông tin tài khoản gửi!")
+                    else:
+                        try:
+                            selected_madvi = target_unit_email.split(" - ")[0]
+                            row_u = df_master[df_master['madvi'].astype(str) == selected_madvi].iloc[0]
+                            recipient_email = row_u.get('dsnv', 'recipient@example.com')
+                            if "@" not in str(recipient_email):
+                                recipient_email = "recipient@example.com"
+                                
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = recipient_email
+                            msg['Subject'] = email_subject
+                            msg.attach(MIMEText(email_body, 'plain', 'utf-8'))
+                            
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, sender_password)
+                            server.sendmail(sender_email, recipient_email, msg.as_string())
+                            server.quit()
+                            
+                            st.success(f"✅ Đã gửi email thành công đến đơn vị: {row_u.get('tendvi')}!")
+                        except Exception as e:
+                            st.error(f"❌ Gửi email thất bại: {e}")
+
+        # -------------------------------------------------------------
+        # TÍNH NĂNG 5: PHÂN TÍCH BIẾN ĐỘNG ĐA KỲ (MoM)
+        # -------------------------------------------------------------
+        elif menu == "📈 5. Phân Tích Biến Động Đa Kỳ (MoM)":
+            st.subheader("📈 Phân Tích Biến Động Số Tháng Nợ & Số Đã Nộp Giữa 2 Kỳ")
+            
+            if df_prev is not None:
+                st.success("Đã nhận diện dữ liệu tháng trước!")
+                merged = pd.merge(df_master, df_prev, on='madvi', suffixes=('_nay', '_truoc'))
+                if 'tyleno_nay' in merged.columns and 'tyleno_truoc' in merged.columns:
+                    merged['Chenh_Lech_So_Thang_No'] = merged['tyleno_nay'] - merged['tyleno_truoc']
+                    
+                    st.markdown("#### Top đơn vị có số tháng nợ tăng mạnh nhất so với tháng trước:")
+                    top_inc = merged.sort_values(by='Chenh_Lech_So_Thang_No', ascending=False).head(10)
+                    st.dataframe(top_inc[['madvi', 'tendvi_nay', 'tyleno_truoc', 'tyleno_nay', 'Chenh_Lech_So_Thang_No']], use_container_width=True)
+                else:
+                    st.warning("Không tìm thấy cột 'tyleno' ở cả hai file để so sánh.")
+            else:
+                st.info("ℹ️ Vui lòng tải file Excel tháng trước ở thanh bên trái để kích hoạt.")
+
+        # -------------------------------------------------------------
+        # TÍNH NĂNG 6: SOẠN & TẢI CÔNG VĂN WORD HÀNG LOẠT
+        # -------------------------------------------------------------
+        elif menu == "📝 6. Soạn & Tải Công Văn Word Hàng Loạt":
+            st.subheader("📝 Tự Động Hóa Soạn Thảo Công Văn Nhắc Nợ (.docx)")
+            
+            template_file = st.file_uploader("📤 Tải lên file Word mẫu gốc (.docx)", type=["docx"])
+            
+            if template_file is not None:
+                target_unit = st.selectbox("Chọn đơn vị cần tạo công văn:", df_master['madvi'].astype(str) + " - " + df_master['tendvi'].astype(str))
+                
+                if st.button("⚙️ Tạo Công Văn Cho Đơn Vị"):
+                    selected_madvi = target_unit.split(" - ")[0]
+                    row_data = df_master[df_master['madvi'].astype(str) == selected_madvi].iloc[0]
+                    
+                    data_dict = {
+                        "tendvi": str(row_data.get('tendvi', '')),
+                        "madvi": str(row_data.get('madvi', '')),
+                        "diachi": str(row_data.get('diachi', '')),
+                        "sld": f"{row_data.get('sld', 0):,.0f}",
+                        "pst": f"{row_data.get('pst', 0):,.0f}",
+                        "_tien_unc": f"{row_data.get('_tien_unc', 0):,.0f}",
+                        "tongThieu": f"{row_data.get('tongThieu', 0):,.0f}",
+                        "tyleno": f"{row_data.get('tyleno', 0):.2f}",
+                        "thang": str(row_data.get('thang', ''))
+                    }
+                    
+                    doc = Document(template_file)
+                    for p in doc.paragraphs:
+                        for key, val in data_dict.items():
+                            if f"{{{{{key}}}}}" in p.text:
+                                p.text = p.text.replace(f"{{{{{key}}}}}", val)
+                    for table in doc.tables:
+                        for row in table.rows:
+                            for cell in row.cells:
+                                for key, val in data_dict.items():
+                                    if f"{{{{{key}}}}}" in cell.text:
+                                        cell.text = cell.text.replace(f"{{{{{key}}}}}", val)
+                                        
+                    doc_io = io.BytesIO()
+                    doc.save(doc_io)
+                    doc_io.seek(0)
+                    
+                    st.success("Đã tạo công văn thành công!")
+                    st.download_button("📥 Tải xuống Công Văn (.docx)", doc_io, f"Cong_van_{selected_madvi}.docx")
+
+        # -------------------------------------------------------------
+        # TÍNH NĂNG 7: KHO DỮ LIỆU GỐC & XUẤT BÁO CÁO
+        # -------------------------------------------------------------
+        elif menu == "📋 7. Kho Dữ Liệu Gốc & Xuất Báo Cáo":
+            st.subheader("📋 Kho Dữ Liệu Gốc & Xuất Báo Cáo Tổng Hợp")
+            
+            search_key = st.text_input("🔎 Tìm kiếm nhanh theo Tên hoặc Mã đơn vị:")
+            if search_key:
+                filtered_df = df_master[df_master['tendvi'].astype(str).str.contains(search_key, case=False, na=False) | 
+                                        df_master['madvi'].astype(str).str.contains(search_key, case=False, na=False)]
+            else:
+                filtered_df = df_master
+                
+            st.dataframe(filtered_df, use_container_width=True)
+            
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, sheet_name='Ket_qua_tong_hop', index=False)
+            
+            st.download_button("📥 Tải xuống Báo Cáo Excel Tổng Hợp", output.getvalue(), "Bao_cao_tong_hop.xlsx")
+
+    except Exception as e:
+        st.error(f"⚠️ Đã có lỗi xảy ra khi xử lý file: {e}")
+else:
+    st.info("👆 Vui lòng tải lên file Excel dữ liệu thô ở thanh bên trái để khởi động toàn bộ hệ thống thông minh.")
