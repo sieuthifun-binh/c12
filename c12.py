@@ -17,25 +17,19 @@ st.markdown("---")
 uploaded_file = st.file_uploader("📤 Tải lên file Excel dữ liệu gốc hàng tháng (ví dụ: .xls hoặc .xlsx)", type=["xls", "xlsx"])
 
 if uploaded_file is not None:
-    @st.cache_data
-    def process_raw_data(file):
-        # Đọc toàn bộ các sheet có trong file Excel
-        xls = pd.ExcelFile(file)
+    try:
+        # Đọc toàn bộ các sheet có trong file Excel trực tiếp (không dùng cache lỗi file handle)
+        xls = pd.ExcelFile(uploaded_file)
         sheet_names = xls.sheet_names
         
         # Đọc sheet 'Cập nhật' làm master data, nếu không có lấy sheet đầu tiên
         target_sheet = 'Cập nhật' if 'Cập nhật' in sheet_names else sheet_names[0]
-        df = pd.read_excel(file, sheet_name=target_sheet)
+        df_master = pd.read_excel(uploaded_file, sheet_name=target_sheet)
         
         # Chuẩn hóa tên cột (loại bỏ khoảng trắng thừa nếu có)
-        df.columns = df.columns.astype(str).str.strip()
+        df_master.columns = df_master.columns.astype(str).str.strip()
         
-        return xls, sheet_names, df
-
-    try:
-        xls_obj, all_sheets, df_master = process_raw_data(uploaded_file)
-        
-        st.sidebar.success(f"Đã đọc file thành công! Các sheet phát hiện: {', '.join(all_sheets)}")
+        st.sidebar.success(f"Đọc file thành công! Các sheet phát hiện: {', '.join(sheet_names)}")
         
         # Sidebar điều hướng chức năng
         menu = st.sidebar.radio(
@@ -53,7 +47,6 @@ if uploaded_file is not None:
         if menu == "📈 Tổng Quan Dashboard & Biểu Đồ":
             st.subheader("📈 Báo Cáo Phân Tích Tổng Quan Tự Động")
             
-            # Kiểm tra và tính toán các chỉ số an toàn
             total_units = len(df_master)
             total_labor = df_master['sld'].sum() if 'sld' in df_master else 0
             total_pst = df_master['pst'].sum() if 'pst' in df_master else 0
@@ -114,7 +107,6 @@ if uploaded_file is not None:
                     st.markdown(f"### 🏢 {unit_row.get('tendvi', 'N/A')}")
                     st.info(f"**Mã đơn vị:** {unit_row.get('madvi', 'N/A')} | **Khối:** {unit_row.get('makhoi', 'N/A')} | **Kỳ tháng:** {unit_row.get('thang', 'N/A')}")
                     
-                    # Các chỉ số cốt lõi của đơn vị
                     sc1, sc2, sc3, sc4 = st.columns(4)
                     sc1.metric("Số lao động", f"{unit_row.get('sld', 0):,.0f}")
                     sc2.metric("Phát sinh thu", f"{unit_row.get('pst', 0):,.0f} đ")
@@ -122,8 +114,6 @@ if uploaded_file is not None:
                     sc4.metric("Tỷ lệ nợ", f"{unit_row.get('tyleno', 0) * 100:.1f}%")
                     
                     st.markdown("---")
-                    
-                    # Trình bày toàn bộ thuộc tính của đơn vị tự động quét từ file gốc
                     st.markdown("#### 📋 Thông tin chi tiết toàn bộ các cột dữ liệu của đơn vị:")
                     df_single_unit = pd.DataFrame([unit_row]).T.reset_index()
                     df_single_unit.columns = ["Tên thuộc tính (Cột)", "Giá trị dữ liệu"]
@@ -132,7 +122,7 @@ if uploaded_file is not None:
                 st.error("Không tìm thấy cột 'madvi' hoặc 'tendvi' trong file dữ liệu.")
 
         # -------------------------------------------------------------
-        # TÁC VỤ 3: XEM BẢNG GỐC VÀ XUẤT BÁO CÁO
+        # TÁC VỤ 3: XEM BẢNG GỐC VÀ XUẤT FILE
         # -------------------------------------------------------------
         elif menu == "📋 Xem Bảng Dữ Liệu Gốc & Xuất File":
             st.subheader("📋 Kho Dữ Liệu Gốc & Bộ Lọc Nâng Cao")
@@ -147,7 +137,6 @@ if uploaded_file is not None:
             st.write(f"Đang hiển thị **{len(filtered_df):,}** bản ghi khớp với dữ liệu nạp lên.")
             st.dataframe(filtered_df, use_container_width=True)
             
-            # Nút xuất file báo cáo tổng hợp sạch sẽ
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 filtered_df.to_excel(writer, sheet_name='Ket_qua_phan_tich', index=False)
