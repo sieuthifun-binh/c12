@@ -4,214 +4,164 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import io
 
-st.set_page_config(page_title="Hệ Thống Quản Lý & Tự Động Hóa Thu Nộp - Nợ Đơn Vị", layout="wide")
+st.set_page_config(page_title="Hệ Thống Phân Tích Tự Động Thu Nộp & Nợ Đơn Vị", layout="wide")
 
-st.title("📊 HỆ THỐNG QUẢN LÝ THU NỘP & NỢ ĐƠN VỊ (QUẢN LÝ DỮ LIỆU ĐỘNG)")
+# Cấu hình giao diện tiếng Việt & font chữ
+plt.rcParams['font.sans-serif'] = 'DejaVu Sans'
+plt.rcParams['axes.unicode_minus'] = False
+
+st.title("📊 HỆ THỐNG PHÂN TÍCH & QUẢN LÝ THU NỘP - NỢ ĐƠN VỊ (TỰ ĐỘNG HÓA)")
 st.markdown("---")
 
-uploaded_file = st.file_uploader("Tải lên file Excel dữ liệu gốc (Theo doi tinh hinh thu nop don vi 2025.xls)", type=["xls", "xlsx"])
+# 1. KHU VỰC NẠP DỮ LIỆU GỐC
+uploaded_file = st.file_uploader("📤 Tải lên file Excel dữ liệu gốc hàng tháng (ví dụ: .xls hoặc .xlsx)", type=["xls", "xlsx"])
 
 if uploaded_file is not None:
-    # Đọc toàn bộ các sheet từ file Excel gốc vào session_state
-    excel_file = pd.ExcelFile(uploaded_file)
-    sheet_names = excel_file.sheet_names
-    
-    if 'dfs' not in st.session_state:
-        st.session_state['dfs'] = {sheet: pd.read_excel(uploaded_file, sheet_name=sheet) for sheet in sheet_names}
-    
-    dfs = st.session_state['dfs']
-    
-    if 'Cập nhật' in dfs:
-        df_capnhat = dfs['Cập nhật']
+    @st.cache_data
+    def process_raw_data(file):
+        # Đọc toàn bộ các sheet có trong file Excel
+        xls = pd.ExcelFile(file)
+        sheet_names = xls.sheet_names
         
-        # Sidebar điều hướng
-        st.sidebar.header("🗂️ Chức năng hệ thống")
+        # Đọc sheet 'Cập nhật' làm master data, nếu không có lấy sheet đầu tiên
+        target_sheet = 'Cập nhật' if 'Cập nhật' in sheet_names else sheet_names[0]
+        df = pd.read_excel(file, sheet_name=target_sheet)
+        
+        # Chuẩn hóa tên cột (loại bỏ khoảng trắng thừa nếu có)
+        df.columns = df.columns.astype(str).str.strip()
+        
+        return xls, sheet_names, df
+
+    try:
+        xls_obj, all_sheets, df_master = process_raw_data(uploaded_file)
+        
+        st.sidebar.success(f"Đã đọc file thành công! Các sheet phát hiện: {', '.join(all_sheets)}")
+        
+        # Sidebar điều hướng chức năng
         menu = st.sidebar.radio(
-            "Chọn tác vụ:", 
+            "⚙️ Chọn Chức Năng Phân Tích:", 
             [
-                "📊 Dashboard & Trực quan", 
-                "🎯 Xem Chi Tiết Theo Mã Đơn Vị", 
-                "📋 Tra cứu danh sách tổng hợp", 
-                "➕ Thêm / Cập nhật dòng dữ liệu"
+                "📈 Tổng Quan Dashboard & Biểu Đồ", 
+                "🎯 Tra Cứu Chi Tiết Từng Đơn Vị", 
+                "📋 Xem Bảng Dữ Liệu Gốc & Xuất File"
             ]
         )
         
         # -------------------------------------------------------------
-        # TÁC VỤ 1: DASHBOARD TỔNG QUAN
+        # TÁC VỤ 1: DASHBOARD & BIỂU ĐỒ TRỰC QUAN TỰ ĐỘNG
         # -------------------------------------------------------------
-        if menu == "📊 Dashboard & Trực quan":
-            st.subheader("Tổng quan tình hình thu nộp và nợ đọng toàn hệ thống")
+        if menu == "📈 Tổng Quan Dashboard & Biểu Đồ":
+            st.subheader("📈 Báo Cáo Phân Tích Tổng Quan Tự Động")
             
-            total_units = len(df_capnhat)
-            total_labor = df_capnhat['sld'].sum() if 'sld' in df_capnhat else 0
-            total_pst = df_capnhat['pst'].sum() if 'pst' in df_capnhat else 0
-            total_debt = df_capnhat['tongThieu'].sum() if 'tongThieu' in df_capnhat else 0
+            # Kiểm tra và tính toán các chỉ số an toàn
+            total_units = len(df_master)
+            total_labor = df_master['sld'].sum() if 'sld' in df_master else 0
+            total_pst = df_master['pst'].sum() if 'pst' in df_master else 0
+            total_debt = df_master['tongThieu'].sum() if 'tongThieu' in df_master else 0
             
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Tổng Số Đơn Vị", f"{total_units:,}")
-            col2.metric("Tổng Lao Động", f"{total_labor:,.0f}")
-            col3.metric("Tổng Phát Sinh Thu", f"{total_pst:,.0f} đ")
-            col4.metric("Tổng Số Tiền Nợ", f"{total_debt:,.0f} đ")
+            # Hiển thị thẻ KPI
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Tổng Số Đơn Vị", f"{total_units:,}")
+            c2.metric("Tổng Số Lao Động", f"{total_labor:,.0f}")
+            c3.metric("Tổng Phát Sinh Thu", f"{total_pst:,.0f} đ")
+            c4.metric("Tổng Số Tiền Nợ", f"{total_debt:,.0f} đ")
             
             st.markdown("---")
+            
+            # Vẽ biểu đồ phân tích trực quan
             col_a, col_b = st.columns(2)
             
             with col_a:
-                st.markdown("#### Top 10 Đơn Vị Nợ Cao Nhất")
-                if 'tongThieu' in df_capnhat and 'tendvi' in df_capnhat:
-                    top10 = df_capnhat.sort_values(by='tongThieu', ascending=False).head(10)
+                st.markdown("#### 🔴 Top 10 Đơn Vị Nợ Cao Nhất")
+                if 'tongThieu' in df_master and 'tendvi' in df_master:
+                    top10 = df_master.sort_values(by='tongThieu', ascending=False).head(10)
                     fig, ax = plt.subplots(figsize=(8, 6))
-                    ax.barh(top10['tendvi'].astype(str).str[:30], top10['tongThieu'] / 1e6, color='#e74c3c')
-                    ax.set_xlabel('Tổng nợ (Triệu VNĐ)')
+                    ax.barh(top10['tendvi'].astype(str).str[:32], top10['tongThieu'] / 1e6, color='#e74c3c')
+                    ax.set_xlabel('Tổng nợ (Triệu VNĐ)', fontweight='bold')
+                    ax.set_title('Top 10 Đơn vị cần đôn đốc thu nợ', fontsize=12, fontweight='bold', color='#c0392b')
                     ax.invert_yaxis()
                     st.pyplot(fig)
+                else:
+                    st.warning("File không đủ cột 'tongThieu' hoặc 'tendvi' để vẽ biểu đồ nợ.")
                     
             with col_b:
-                st.markdown("#### Tổng Nợ Theo Khối Đơn Vị")
-                if 'makhoi' in df_capnhat and 'tongThieu' in df_capnhat:
-                    block_grp = df_capnhat.groupby('makhoi')['tongThieu'].sum().reset_index().sort_values(by='tongThieu', ascending=False).head(10)
+                st.markdown("#### 🔵 Tổng Nợ Theo Khối Đơn Vị")
+                if 'makhoi' in df_master and 'tongThieu' in df_master:
+                    block_grp = df_master.groupby('makhoi')['tongThieu'].sum().reset_index().sort_values(by='tongThieu', ascending=False).head(10)
                     fig2, ax2 = plt.subplots(figsize=(8, 6))
                     ax2.bar(block_grp['makhoi'].astype(str), block_grp['tongThieu'] / 1e6, color='#3498db')
-                    ax2.set_ylabel('Tổng nợ (Tr VNĐ)')
-                    ax2.set_xlabel('Khối đơn vị')
+                    ax2.set_ylabel('Tổng nợ (Tr VNĐ)', fontweight='bold')
+                    ax2.set_xlabel('Khối đơn vị', fontweight='bold')
+                    ax2.set_title('Phân bổ nợ theo Khối', fontsize=12, fontweight='bold', color='#2980b9')
                     st.pyplot(fig2)
+                else:
+                    st.warning("File không đủ cột 'makhoi' hoặc 'tongThieu'.")
 
         # -------------------------------------------------------------
-        # TÁC VỤ 2: XEM CHI TIẾT THEO TỪNG MÃ ĐƠN VỊ (MỚI BỔ SUNG)
+        # TÁC VỤ 2: TRA CỨU HỒ SƠ CHI TIẾT TỪNG ĐƠN VỊ
         # -------------------------------------------------------------
-        elif menu == "🎯 Xem Chi Tiết Theo Mã Đơn Vị":
-            st.subheader("🎯 Tra cứu Hồ sơ Chi tiết Đơn vị")
+        elif menu == "🎯 Tra Cứu Chi Tiết Từng Đơn Vị":
+            st.subheader("🎯 Tra Cứu Hồ Sơ & Chỉ Số Chi Tiết Đơn Vị")
             
-            # Tạo danh sách Mã đơn vị kèm Tên đơn vị để tìm kiếm / chọn nhanh
-            unit_options = df_capnhat['madvi'].astype(str) + " - " + df_capnhat['tendvi'].astype(str)
-            selected_option = st.selectbox("👉 Chọn hoặc Gõ tìm kiếm Mã / Tên Đơn Vị:", unit_options)
-            
-            if selected_option:
-                selected_madvi = selected_option.split(" - ")[0]
-                unit_data = df_capnhat[df_capnhat['madvi'].astype(str) == selected_madvi].iloc[0]
+            if 'madvi' in df_master and 'tendvi' in df_master:
+                unit_options = df_master['madvi'].astype(str) + " - " + df_master['tendvi'].astype(str)
+                selected_option = st.selectbox("🔍 Gõ hoặc chọn Mã / Tên Đơn Vị cần phân tích:", unit_options)
                 
-                # Khung thông tin tổng quan
-                st.markdown(f"### 🏢 {unit_data.get('tendvi', 'N/A')}")
-                st.info(f"**Mã đơn vị:** {unit_data.get('madvi', 'N/A')} | **Khối:** {unit_data.get('makhoi', 'N/A')} | **Kỳ theo dõi:** {unit_data.get('thang', 'N/A')}")
-                
-                # Thẻ Chỉ số chính của Đơn vị
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Số lao động", f"{unit_data.get('sld', 0):,.0f} người")
-                c2.metric("Phát sinh thu (PST)", f"{unit_data.get('pst', 0):,.0f} đ")
-                c3.metric("Tổng thiếu / Nợ", f"{unit_data.get('tongThieu', 0):,.0f} đ")
-                c4.metric("Tỷ lệ nợ BHXH", f"{unit_data.get('tyleno', 0) * 100:.1f}%")
-                
-                st.markdown("---")
-                
-                # Phân chia thông tin chi tiết thành các nhóm Tab
-                tab_info, tab_financial, tab_all = st.tabs(["📌 Thông tin hành chính & Liên hệ", "💰 Chi tiết Thu Nộp & Nợ", "📄 Tất cả 230 Cột Dữ Liệu"])
-                
-                with tab_info:
-                    col_i1, col_i2 = st.columns(2)
-                    with col_i1:
-                        st.write(f"**Địa chỉ:** {unit_data.get('diachi', 'Chưa có thông tin')}")
-                        st.write(f"**Điện thoại liên hệ:** {unit_data.get('dienthoai', 'Chưa có')}")
-                        st.write(f"**Người liên hệ:** {unit_data.get('nguoilh', 'Chưa có')}")
-                    with col_i2:
-                        st.write(f"**Chuyên quản phụ trách:** {unit_data.get('ma_quan', 'Chưa có')}")
-                        st.write(f"**Email / Chuyên quản:** {unit_data.get('dsnv', 'Chưa có')}")
-                        st.write(f"**Ghi chú đơn vị:** {unit_data.get('ghichu', 'Không có')}")
-                        
-                with tab_financial:
-                    col_f1, col_f2 = st.columns(2)
-                    with col_f1:
-                        st.markdown("##### 📥 Các khoản Phát sinh & Dư nợ")
-                        st.write(f"- **Phát sinh BHXH:** {unit_data.get('_ps_bh', 0):,.0f} đ")
-                        st.write(f"- **Phát sinh BHYT:** {unit_data.get('_ps_yt', 0):,.0f} đ")
-                        st.write(f"- **Phát sinh BHTN:** {unit_data.get('_ps_tn', 0):,.0f} đ")
-                        st.write(f"- **Số tiền đầu kỳ:** {unit_data.get('_tien_dk', 0):,.0f} đ")
-                    with col_f2:
-                        st.markdown("##### 📤 Số tiền Đã Nộp & Cuối kỳ")
-                        st.write(f"- **Số tiền đã nộp (UNC):** {unit_data.get('_tien_unc', 0):,.0f} đ")
-                        st.write(f"- **Số tiền cuối kỳ:** {unit_data.get('_tien_ck', 0):,.0f} đ")
-                        st.write(f"- **Tỷ lệ nợ BHYT:** {unit_data.get('tylenoyt', 0) * 100:.1f}%")
-
-                with tab_all:
-                    st.markdown("##### 🔍 Toàn bộ thuộc tính dữ liệu của đơn vị này (Hơn 200 thuộc tính):")
-                    df_single = pd.DataFrame([unit_data])
-                    st.dataframe(df_single.T.rename(columns={0: "Giá trị"}), use_container_width=True)
-
-        # -------------------------------------------------------------
-        # TÁC VỤ 3: TRA CỨU DANH SÁCH TỔNG HỢP
-        # -------------------------------------------------------------
-        elif menu == "📋 Tra cứu danh sách tổng hợp":
-            st.subheader("Tra cứu chi tiết trên tất cả các dòng dữ liệu")
-            search_term = st.text_input("Tìm kiếm theo Tên đơn vị hoặc Mã đơn vị:")
-            if search_term:
-                filtered = df_capnhat[df_capnhat['tendvi'].astype(str).str.contains(search_term, case=False, na=False) | 
-                                      df_capnhat['madvi'].astype(str).str.contains(search_term, case=False, na=False)]
+                if selected_option:
+                    selected_madvi = selected_option.split(" - ")[0]
+                    unit_row = df_master[df_master['madvi'].astype(str) == selected_madvi].iloc[0]
+                    
+                    st.markdown(f"### 🏢 {unit_row.get('tendvi', 'N/A')}")
+                    st.info(f"**Mã đơn vị:** {unit_row.get('madvi', 'N/A')} | **Khối:** {unit_row.get('makhoi', 'N/A')} | **Kỳ tháng:** {unit_row.get('thang', 'N/A')}")
+                    
+                    # Các chỉ số cốt lõi của đơn vị
+                    sc1, sc2, sc3, sc4 = st.columns(4)
+                    sc1.metric("Số lao động", f"{unit_row.get('sld', 0):,.0f}")
+                    sc2.metric("Phát sinh thu", f"{unit_row.get('pst', 0):,.0f} đ")
+                    sc3.metric("Tổng nợ", f"{unit_row.get('tongThieu', 0):,.0f} đ")
+                    sc4.metric("Tỷ lệ nợ", f"{unit_row.get('tyleno', 0) * 100:.1f}%")
+                    
+                    st.markdown("---")
+                    
+                    # Trình bày toàn bộ thuộc tính của đơn vị tự động quét từ file gốc
+                    st.markdown("#### 📋 Thông tin chi tiết toàn bộ các cột dữ liệu của đơn vị:")
+                    df_single_unit = pd.DataFrame([unit_row]).T.reset_index()
+                    df_single_unit.columns = ["Tên thuộc tính (Cột)", "Giá trị dữ liệu"]
+                    st.dataframe(df_single_unit, use_container_width=True)
             else:
-                filtered = df_capnhat
-                
-            st.write(f"Hệ thống đang hiển thị **{len(filtered)}** dòng dữ liệu khớp điều kiện.")
-            st.dataframe(filtered, use_container_width=True)
+                st.error("Không tìm thấy cột 'madvi' hoặc 'tendvi' trong file dữ liệu.")
 
         # -------------------------------------------------------------
-        # TÁC VỤ 4: THÊM / CẬP NHẬT DỮ LIỆU
+        # TÁC VỤ 3: XEM BẢNG GỐC VÀ XUẤT BÁO CÁO
         # -------------------------------------------------------------
-        elif menu == "➕ Thêm / Cập nhật dòng dữ liệu":
-            st.subheader("Thêm mới hoặc cập nhật thông tin đơn vị")
+        elif menu == "📋 Xem Bảng Dữ Liệu Gốc & Xuất File":
+            st.subheader("📋 Kho Dữ Liệu Gốc & Bộ Lọc Nâng Cao")
             
-            with st.form("add_row_form"):
-                col_f1, col_f2 = st.columns(2)
-                with col_f1:
-                    new_madvi = st.text_input("Mã đơn vị (madvi) *bắt buộc*")
-                    new_tendvi = st.text_input("Tên đơn vị (tendvi)")
-                    new_makhoi = st.text_input("Mã khối (makhoi)")
-                    new_diachi = st.text_input("Địa chỉ (diachi)")
-                with col_f2:
-                    new_sld = st.number_input("Số lao động (sld)", min_value=0, value=1)
-                    new_pst = st.number_input("Phát sinh thu (pst)", min_value=0.0, value=0.0)
-                    new_tongThieu = st.number_input("Tổng nợ thiếu (tongThieu)", min_value=0.0, value=0.0)
-                    new_thang = st.text_input("Kỳ tháng (thang, VD: 202609)", value="202609")
+            search_key = st.text_input("🔎 Tìm kiếm nhanh theo Tên hoặc Mã đơn vị trong bảng:")
+            if search_key:
+                filtered_df = df_master[df_master['tendvi'].astype(str).str.contains(search_key, case=False, na=False) | 
+                                        df_master['madvi'].astype(str).str.contains(search_key, case=False, na=False)]
+            else:
+                filtered_df = df_master
                 
-                submitted = st.form_submit_button("💾 Lưu dòng dữ liệu")
-                
-                if submitted:
-                    if not new_madvi:
-                        st.error("Vui lòng nhập Mã đơn vị!")
-                    else:
-                        if new_madvi in df_capnhat['madvi'].astype(str).values:
-                            idx = df_capnhat[df_capnhat['madvi'].astype(str) == new_madvi].index[0]
-                            df_capnhat.loc[idx, 'tendvi'] = new_tendvi if new_tendvi else df_capnhat.loc[idx, 'tendvi']
-                            df_capnhat.loc[idx, 'makhoi'] = new_makhoi if new_makhoi else df_capnhat.loc[idx, 'makhoi']
-                            df_capnhat.loc[idx, 'sld'] = new_sld
-                            df_capnhat.loc[idx, 'pst'] = new_pst
-                            df_capnhat.loc[idx, 'tongThieu'] = new_tongThieu
-                            st.success(f"Đã cập nhật thông tin cho đơn vị mã: {new_madvi}")
-                        else:
-                            new_row = {col: pd.NA for col in df_capnhat.columns}
-                            new_row['madvi'] = new_madvi
-                            new_row['tendvi'] = new_tendvi
-                            new_row['makhoi'] = new_makhoi
-                            new_row['diachi'] = new_diachi
-                            new_row['sld'] = new_sld
-                            new_row['pst'] = new_pst
-                            new_row['tongThieu'] = new_tongThieu
-                            new_row['thang'] = new_thang
-                            
-                            df_capnhat = pd.concat([df_capnhat, pd.DataFrame([new_row])], ignore_index=True)
-                            st.session_state['dfs']['Cập nhật'] = df_capnhat
-                            st.success(f"✅ Đã thêm thành công đơn vị mới! Tổng dòng: {len(df_capnhat):,}")
+            st.write(f"Đang hiển thị **{len(filtered_df):,}** bản ghi khớp với dữ liệu nạp lên.")
+            st.dataframe(filtered_df, use_container_width=True)
+            
+            # Nút xuất file báo cáo tổng hợp sạch sẽ
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, sheet_name='Ket_qua_phan_tich', index=False)
+            processed_data = output.getvalue()
 
-        st.markdown("---")
-        # Nút xuất File Excel hoàn chỉnh
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            for s_name, s_df in st.session_state['dfs'].items():
-                s_df.to_excel(writer, sheet_name=s_name, index=False)
-        processed_data = output.getvalue()
+            st.download_button(
+                label="📥 Tải xuống Báo Cáo Phân Tích (Excel)",
+                data=processed_data,
+                file_name='Bao_cao_phan_tich_thu_nop.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
 
-        st.download_button(
-            label="📥 Tải xuống File Excel hoàn chỉnh (Full dữ liệu)",
-            data=processed_data,
-            file_name='Theo_doi_tinh_hinh_thu_nop_don_vi_2025_full_updated.xlsx',
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+    except Exception as e:
+        st.error(f"⚠️ Đã có lỗi xảy ra khi đọc file dữ liệu: {e}")
+        st.info("Vui lòng đảm bảo file Excel tải lên đúng định dạng tiêu chuẩn.")
 else:
-    st.info("👆 Vui lòng tải lên file Excel gốc của anh/chị ở khung trên để khởi động ứng dụng.")
+    st.info("👆 Vui lòng bấm nút **Browse files** ở trên để tải file Excel dữ liệu thô lên. Hệ thống sẽ tự động phân tích và trực quan hóa ngay lập tức!")
