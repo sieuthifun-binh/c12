@@ -54,7 +54,6 @@ if uploaded_file is not None:
             if pd.isna(debt_ck):
                 debt_ck = 0
             
-            # Quy chuẩn nghiệp vụ theo số tháng nợ và số tiền cuối kỳ
             if tyleno >= 3.0 or debt_ck >= 100000000:
                 return "🔴 Nguy cơ nợ kéo dài (>= 3 tháng hoặc Nợ lớn)"
             elif 1.0 <= tyleno < 3.0:
@@ -81,7 +80,7 @@ if uploaded_file is not None:
         )
         
         # -------------------------------------------------------------
-        # TÍNH NĂNG 1: DASHBOARD & CẢNH BÁO RỦI RO (DÙNG _TIEN_CK & TYLENO)
+        # TÍNH NĂNG 1: DASHBOARD & CẢNH BÁO RỦI RO (BỔ SUNG TAB CHƯA NỘP TIỀN)
         # -------------------------------------------------------------
         if menu == "📊 1. Dashboard & Cảnh Báo Rủi Ro (Theo _tien_ck & tyleno)":
             st.subheader("📊 Tổng Quan & Phân Tích Dòng Tiền, Số Tháng Nợ (`tyleno`) & Tiền Cuối Kỳ (`_tien_ck`)")
@@ -107,29 +106,36 @@ if uploaded_file is not None:
             df_medium_debt = df_master[df_master['Muc_Do_Rui_Ro'] == "🟡 Nợ đọng (Từ 1 đến < 3 tháng)"]
             df_short_debt = df_master[df_master['Muc_Do_Rui_Ro'] == "🟠 Chậm đóng (< 1 tháng / Phát sinh nợ)"]
             df_safe = df_master[df_master['Muc_Do_Rui_Ro'] == "🟢 An toàn / Không nợ"]
+            
+            # Tách thêm nhóm CHƯA NỘP TIỀN TRONG THÁNG (_tien_unc == 0 hoặc NaN), sắp xếp theo _tien_ck giảm dần
+            if '_tien_unc' in df_master.columns:
+                df_unpaid = df_master[(df_master['_tien_unc'].fillna(0) == 0)].sort_values(by='_tien_ck', ascending=False)
+            else:
+                df_unpaid = pd.DataFrame()
 
-            # Hiển thị thẻ Card thống kê số lượng & tổng nợ cuối kỳ từng nhóm
+            # Hiển thị thẻ Card thống kê
             rc1, rc2, rc3, rc4 = st.columns(4)
             rc1.metric("🔴 Nợ kéo dài/Nợ lớn", f"{len(df_long_debt):,} đơn vị", f"Nợ CK: {df_long_debt['_tien_ck'].sum():,.0f} đ")
             rc2.metric("🟡 Nợ đọng (1-3T)", f"{len(df_medium_debt):,} đơn vị", f"Nợ CK: {df_medium_debt['_tien_ck'].sum():,.0f} đ")
-            rc3.metric("🟠 Chậm đóng (<1T)", f"{len(df_short_debt):,} đơn vị", f"Nợ CK: {df_short_debt['_tien_ck'].sum():,.0f} đ")
+            rc3.metric("🚨 Chưa nộp tiền (_tien_unc = 0)", f"{len(df_unpaid):,} đơn vị", f"Nợ CK: {df_unpaid['_tien_ck'].sum():,.0f} đ")
             rc4.metric("🟢 An toàn", f"{len(df_safe):,} đơn vị", f"Đã nộp: {df_safe['_tien_unc'].sum():,.0f} đ")
             
             st.markdown("---")
-            st.markdown("### 📂 Bấm chọn các Tab bên dưới để xem chi tiết danh sách đơn vị theo nhóm rủi ro (`_tien_ck` & `tyleno`):")
+            st.markdown("### 📂 Bấm chọn các Tab bên dưới để xem chi tiết danh sách đơn vị:")
             
-            # Tạo các Tab trực quan cho từng nhóm
-            tab_long, tab_med, tab_short, tab_safe_t = st.tabs([
+            # Tạo các Tab trực quan (Bổ sung Tab "🚨 Chưa nộp tiền trong tháng" ngay cạnh Tab An toàn)
+            tab_long, tab_med, tab_short, tab_safe_t, tab_unpaid = st.tabs([
                 f"🔴 Nợ kéo dài / Nợ lớn ({len(df_long_debt)})", 
                 f"🟡 Nợ đọng 1-3 tháng ({len(df_medium_debt)})", 
                 f"🟠 Chậm đóng <1 tháng ({len(df_short_debt)})",
-                f"🟢 An toàn ({len(df_safe)})"
+                f"🟢 An toàn ({len(df_safe)})",
+                f"🚨 Chưa nộp tiền trong tháng ({len(df_unpaid)})"
             ])
             
             cols_show = [c for c in ['madvi', 'tendvi', 'makhoi', 'sld', 'pst', '_tien_unc', '_tien_ck', 'tyleno', 'diachi'] if c in df_master.columns]
 
             with tab_long:
-                st.markdown("##### 🚨 Danh sách đơn vị **Nợ kéo dài (>=3 tháng) hoặc Nợ lớn** (`_tien_ck` cao) - Cần đôn đốc gấp")
+                st.markdown("##### 🚨 Danh sách đơn vị **Nợ kéo dài (>=3 tháng) hoặc Nợ lớn** - Cần đôn đốc gấp")
                 if len(df_long_debt) > 0:
                     st.dataframe(df_long_debt[cols_show], use_container_width=True)
                     out_l = io.BytesIO()
@@ -172,19 +178,29 @@ if uploaded_file is not None:
                 else:
                     st.info("Không có đơn vị nào trong nhóm này.")
 
+            with tab_unpaid:
+                st.markdown("##### 🚨 Danh sách các đơn vị **Chưa nộp tiền trong tháng** (`_tien_unc = 0`), được sắp xếp từ số tiền nợ cuối kỳ (`_tien_ck`) **cao nhất đến thấp nhất**:")
+                if len(df_unpaid) > 0:
+                    st.dataframe(df_unpaid[cols_show], use_container_width=True)
+                    out_unp = io.BytesIO()
+                    with pd.ExcelWriter(out_unp, engine='openpyxl') as writer:
+                        df_unpaid.to_excel(writer, sheet_name='Chua_nop_tien', index=False)
+                    st.download_button("📥 Tải danh sách Chưa nộp tiền (Excel)", out_unp.getvalue(), "Danh_sach_chua_nop_tien.xlsx", key="dl_unp")
+                else:
+                    st.info("Tuyệt vời! Tất cả các đơn vị đều đã có phát sinh nộp tiền trong tháng.")
+
             st.markdown("---")
             col_a, col_b = st.columns(2)
             
             with col_a:
                 st.markdown("#### 🔴 Top 10 Đơn Vị Có Số Tiền Cuối Kỳ (`_tien_ck`) Cao Nhất")
                 top10_ck = df_master.sort_values(by='_tien_ck', ascending=False).head(10)
-                # Tăng kích thước khung biểu đồ và chỉnh lề trái (left margin) để hiển thị đầy đủ tên đơn vị không bị cụt
                 fig, ax = plt.subplots(figsize=(9, 7))
                 ax.barh(top10_ck['tendvi'].astype(str).str[:35], top10_ck['_tien_ck'] / 1e6, color='#e74c3c')
                 ax.set_xlabel('Số tiền cuối kỳ / Nợ (Triệu VNĐ)', fontweight='bold')
                 ax.set_title('Top 10 Đơn vị nợ cuối kỳ lớn nhất', fontsize=12, fontweight='bold')
                 ax.invert_yaxis()
-                plt.subplots_adjust(left=0.35) # Dành khoảng trống rộng bên trái cho tên đơn vị
+                plt.subplots_adjust(left=0.35)
                 st.pyplot(fig)
                 
             with col_b:
@@ -199,21 +215,17 @@ if uploaded_file is not None:
         # -------------------------------------------------------------
         elif menu == "🤖 2. Trợ Lý AI Tra Cứu Ngôn Ngữ Tự Nhiên":
             st.subheader("🤖 Trợ Lý Ảo Truy Vấn Dữ Liệu Bằng Ngôn Ngữ Tự Nhiên")
-            st.info("💡 **Ví dụ câu lệnh:** Nhập `nợ cuối kỳ > 50000000` hoặc `số tháng nợ >= 3`.")
+            st.info("💡 **Ví dụ câu lệnh:** Nhập `chưa nộp` hoặc `nợ cuối kỳ > 50000000`.")
             
             query = st.text_input("💬 Nhập yêu cầu tìm kiếm của bạn:")
             if query:
                 try:
                     query_lower = query.lower()
-                    if "nợ cuối kỳ >" in query_lower:
+                    if "chưa nộp" in query_lower:
+                        result_df = df_master[df_master['_tien_unc'].fillna(0) == 0].sort_values(by='_tien_ck', ascending=False)
+                    elif "nợ cuối kỳ >" in query_lower:
                         val = float(query_lower.split("nợ cuối kỳ >")[1].strip())
                         result_df = df_master[df_master['_tien_ck'] > val]
-                    elif "số tháng nợ >=" in query_lower:
-                        val = float(query_lower.split("số tháng nợ >=")[1].strip())
-                        result_df = df_master[df_master['tyleno'] >= val]
-                    elif "lao động >" in query_lower:
-                        val = float(query_lower.split("lao động >")[1].strip())
-                        result_df = df_master[df_master['sld'] > val]
                     else:
                         result_df = df_master[df_master['tendvi'].astype(str).str.contains(query, case=False, na=False)]
                     
@@ -281,7 +293,7 @@ if uploaded_file is not None:
                     email_subject = st.text_input("Tiêu đề Email:", value="THÔNG BÁO: Đôn đốc nộp tiền BHXH, BHYT, BHTN")
                     target_unit_email = st.selectbox("Chọn đơn vị nhận email:", df_master['madvi'].astype(str) + " - " + df_master['tendvi'].astype(str))
                 
-                email_body = st.text_area("Nội dung Email nhắc nợ:", value="Kính gửi Quý đơn vị,\n\nQua hệ thống theo dõi thu nộp, đơn vị hiện đang có số tiền cuối kỳ (`_tien_ck`) cần thanh toán. Đề nghị đơn vị khẩn trương nộp tiền để đảm bảo quyền lợi người lao động.\n\nTrân trọng!")
+                email_body = st.text_area("Nội dung Email nhắc nợ:", value="Kính gửi Quý đơn vị,\n\nQua kiểm tra hệ thống tháng này, đơn vị chưa phát sinh số tiền nộp (`_tien_unc = 0`) trong khi vẫn còn số dư nợ cuối kỳ (`_tien_ck`). Đề nghị đơn vị khẩn trương thanh toán.\n\nTrân trọng!")
                 
                 send_btn = st.form_submit_button("🚀 Gửi Email Tự Động Ngay")
                 
@@ -316,15 +328,14 @@ if uploaded_file is not None:
         # TÍNH NĂNG 5: PHÂN TÍCH BIẾN ĐỘNG ĐA KỲ (MoM)
         # -------------------------------------------------------------
         elif menu == "📈 5. Phân Tích Biến Động Đa Kỳ (MoM)":
-            st.subheader("📈 Phân Tích Biến Động Số Tiền Cuối Kỳ (`_tien_ck`) Giữa 2 Kỳ")
+            st.subheader("📈 Phân Tích Biến Động Giữa 2 Kỳ")
             
             if df_prev is not None:
                 st.success("Đã nhận diện dữ liệu tháng trước!")
                 merged = pd.merge(df_master, df_prev, on='madvi', suffixes=('_nay', '_truoc'))
                 if '_tien_ck_nay' in merged.columns and '_tien_ck_truoc' in merged.columns:
                     merged['Chenh_Lech_Tien_CK'] = merged['_tien_ck_nay'] - merged['_tien_ck_truoc']
-                    
-                    st.markdown("#### Top đơn vị có số tiền cuối kỳ (`_tien_ck`) tăng mạnh nhất so với tháng trước:")
+                    st.markdown("#### Top đơn vị có số tiền cuối kỳ tăng mạnh nhất:")
                     top_inc = merged.sort_values(by='Chenh_Lech_Tien_CK', ascending=False).head(10)
                     st.dataframe(top_inc[['madvi', 'tendvi_nay', '_tien_ck_truoc', '_tien_ck_nay', 'Chenh_Lech_Tien_CK']], use_container_width=True)
                 else:
