@@ -16,7 +16,7 @@ st.set_page_config(page_title="Hệ Thống Quản Lý & Tác Nghiệp Thu Nộp
 plt.rcParams['font.sans-serif'] = 'DejaVu Sans'
 plt.rcParams['axes.unicode_minus'] = False
 
-st.title("🚀 HỆ THỐNG QUẢN LÝ THU NỘP & TÁC NGHIỆP THÔNG MINH (ENTERPRISE EDITION)")
+st.title("🚀 HỆ THỐNG QUẢN LÝ THEO DÕI THU NỘP & TÁC NGHIỆP THÔNG MINH")
 st.markdown("---")
 
 # Khởi tạo bộ nhớ tạm cho CRM Activity Log nếu chưa có
