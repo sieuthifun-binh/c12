@@ -344,4 +344,73 @@ if uploaded_file is not None:
                 st.info("ℹ️ Vui lòng tải file Excel tháng trước ở thanh bên trái để kích hoạt.")
 
         # -------------------------------------------------------------
-        # TÍNH NĂNG 6: SOẠN & TẢI CÔNG V
+        # TÍNH NĂNG 6: SOẠN & TẢI CÔNG VĂN WORD HÀNG LOẠT
+        # -------------------------------------------------------------
+        elif menu == "📝 6. Soạn & Tải Công Văn Word Hàng Loạt":
+            st.subheader("📝 Tự Động Hóa Soạn Thảo Công Văn Nhắc Nợ (.docx)")
+            
+            template_file = st.file_uploader("📤 Tải lên file Word mẫu gốc (.docx)", type=["docx"])
+            
+            if template_file is not None:
+                target_unit = st.selectbox("Chọn đơn vị cần tạo công văn:", df_master['madvi'].astype(str) + " - " + df_master['tendvi'].astype(str))
+                
+                if st.button("⚙️ Tạo Công Văn Cho Đơn Vị"):
+                    selected_madvi = target_unit.split(" - ")[0]
+                    row_data = df_master[df_master['madvi'].astype(str) == selected_madvi].iloc[0]
+                    
+                    data_dict = {
+                        "tendvi": str(row_data.get('tendvi', '')),
+                        "madvi": str(row_data.get('madvi', '')),
+                        "diachi": str(row_data.get('diachi', '')),
+                        "sld": f"{row_data.get('sld', 0):,.0f}",
+                        "pst": f"{row_data.get('pst', 0):,.0f}",
+                        "_tien_unc": f"{row_data.get('_tien_unc', 0):,.0f}",
+                        "_tien_ck": f"{row_data.get('_tien_ck', 0):,.0f}",
+                        "tyleno": f"{row_data.get('tyleno', 0):.2f}",
+                        "thang": str(row_data.get('thang', ''))
+                    }
+                    
+                    doc = Document(template_file)
+                    for p in doc.paragraphs:
+                        for key, val in data_dict.items():
+                            if f"{{{{{key}}}}}" in p.text:
+                                p.text = p.text.replace(f"{{{{{key}}}}}", val)
+                    for table in doc.tables:
+                        for row in table.rows:
+                            for cell in row.cells:
+                                for key, val in data_dict.items():
+                                    if f"{{{{{key}}}}}" in cell.text:
+                                        cell.text = cell.text.replace(f"{{{{{key}}}}}", val)
+                                        
+                    doc_io = io.BytesIO()
+                    doc.save(doc_io)
+                    doc_io.seek(0)
+                    
+                    st.success("Đã tạo công văn thành công!")
+                    st.download_button("📥 Tải xuống Công Văn (.docx)", doc_io, f"Cong_van_{selected_madvi}.docx")
+
+        # -------------------------------------------------------------
+        # TÍNH NĂNG 7: KHO DỮ LIỆU GỐC & XUẤT BÁO CÁO
+        # -------------------------------------------------------------
+        elif menu == "📋 7. Kho Dữ Liệu Gốc & Xuất Báo Cáo":
+            st.subheader("📋 Kho Dữ Liệu Gốc & Xuất Báo Cáo Tổng Hợp")
+            
+            search_key = st.text_input("🔎 Tìm kiếm nhanh theo Tên hoặc Mã đơn vị:")
+            if search_key:
+                filtered_df = df_master[df_master['tendvi'].astype(str).str.contains(search_key, case=False, na=False) | 
+                                        df_master['madvi'].astype(str).str.contains(search_key, case=False, na=False)]
+            else:
+                filtered_df = df_master
+                
+            st.dataframe(filtered_df, use_container_width=True)
+            
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, sheet_name='Ket_qua_tong_hop', index=False)
+            
+            st.download_button("📥 Tải xuống Báo Cáo Excel Tổng Hợp", output.getvalue(), "Bao_cao_tong_hop.xlsx")
+
+    except Exception as e:
+        st.error(f"⚠️ Đã có lỗi xảy ra khi xử lý file: {e}")
+else:
+    st.info("👆 Vui lòng tải lên file Excel dữ liệu thô ở thanh bên trái để khởi động toàn bộ hệ thống thông minh.")
